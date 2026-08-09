@@ -24,9 +24,7 @@ public class ShuntingYard {
             while ((line = reader.readLine()) != null) {
                 ArrayList<String> lineTokens = new ArrayList<>();
                 for (char symbol : line.toCharArray()) {
-                    if (!Character.isWhitespace(symbol)) {
-                        lineTokens.add(String.valueOf(symbol));
-                    }
+                    lineTokens.add(String.valueOf(symbol));
                 }
                 if (!lineTokens.isEmpty()) {
                     tokens.add(lineTokens);
@@ -38,15 +36,17 @@ public class ShuntingYard {
     public void processAllTokens(boolean trace) {
         postfixExpressions.clear();
         for (ArrayList<String> regex : tokens) {
-            if (isBalanced(regex)) {
-                try {
-                    ArrayList<String> postfix = infixToPostfix(regex, trace);
+            try {
+                ArrayList<String> groupedRegex = groupEscapedCharacters(regex);
+                
+                if (isBalanced(groupedRegex)) {
+                    ArrayList<String> postfix = infixToPostfix(groupedRegex, trace);
                     postfixExpressions.add(postfix);
-                } catch (IllegalArgumentException e) {
-                    System.err.println("Error processing expression: " + e.getMessage());
+                } else {
+                    System.err.println("Skipped unbalanced expression: " + String.join("", regex));
                 }
-            } else {
-                System.err.println("Skipped unbalanced expression: " + String.join("", regex));
+            } catch (IllegalArgumentException e) {
+                System.err.println("Error processing expression: " + e.getMessage());
             }
         }
     }
@@ -56,6 +56,8 @@ public class ShuntingYard {
         String openings = "([{", closings = ")]}";
 
         for (String token : lineTokens) {
+            if (token.length() > 1) continue; 
+
             char symbol = token.charAt(0);
             int openingIndex = openings.indexOf(symbol);
             int closingIndex = closings.indexOf(symbol);
@@ -107,8 +109,7 @@ public class ShuntingYard {
         return 0;
     }
 
-    public ArrayList<String> formatRegEx(ArrayList<String> regex) {
-        ArrayList<String> grouped = groupEscapedCharacters(regex);
+    public ArrayList<String> formatRegEx(ArrayList<String> grouped) {
         ArrayList<String> formatted = new ArrayList<>();
 
         for (int i = 0; i < grouped.size(); i++) {
@@ -123,14 +124,15 @@ public class ShuntingYard {
         return formatted;
     }
 
-    public ArrayList<String> infixToPostfix(ArrayList<String> regex) {
-        return infixToPostfix(regex, true);
+    public ArrayList<String> infixToPostfix(ArrayList<String> groupedRegex) {
+        return infixToPostfix(groupedRegex, true);
     }
 
-    private ArrayList<String> infixToPostfix(ArrayList<String> regex, boolean trace) {
+    private ArrayList<String> infixToPostfix(ArrayList<String> groupedRegex, boolean trace) {
         ArrayList<String> postfix = new ArrayList<>();
         Deque<String> stack = new ArrayDeque<>();
-        ArrayList<String> formattedRegEx = formatRegEx(regex);
+        
+        ArrayList<String> formattedRegEx = formatRegEx(groupedRegex);
         boolean expectingOperand = true;
 
         if (formattedRegEx.isEmpty()) {
@@ -204,7 +206,7 @@ public class ShuntingYard {
         return postfix;
     }
 
-    private ArrayList<String> groupEscapedCharacters(ArrayList<String> regex) {
+    public ArrayList<String> groupEscapedCharacters(ArrayList<String> regex) {
         ArrayList<String> grouped = new ArrayList<>();
 
         for (int i = 0; i < regex.size(); i++) {
@@ -243,7 +245,13 @@ public class ShuntingYard {
                     if (member > 0) {
                         grouped.add("|");
                     }
-                    grouped.add(members.get(member));
+                    String m = members.get(member);
+                    
+                    if (m.length() == 1 && (isBinaryOperator(m) || isPostfixOperator(m) || m.equals("(") || m.equals(")"))) {
+                        grouped.add("\\" + m);
+                    } else {
+                        grouped.add(m);
+                    }
                 }
                 grouped.add(")");
             } else {
@@ -280,15 +288,18 @@ public class ShuntingYard {
             Deque<String> stack) {
         System.out.printf("%-10s %-22s %-35s %s%n",
                 token, action, String.join(" ", output), stack);
-    }
+            }
 
     public static void selfTest() {
         ArrayList<String> expression = new ArrayList<>();
         for (char symbol : "[ae]+".toCharArray()) {
             expression.add(String.valueOf(symbol));
         }
-        String postfix = String.join("",
-                new ShuntingYard().infixToPostfix(expression, false));
+        ShuntingYard sy = new ShuntingYard();
+        
+        ArrayList<String> grouped = sy.groupEscapedCharacters(expression);
+        String postfix = String.join("", sy.infixToPostfix(grouped, false));
+        
         if (!postfix.equals("ae|+")) {
             throw new AssertionError("Expected ae|+, got " + postfix);
         }
