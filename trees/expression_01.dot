@@ -1,0 +1,27 @@
+digraph SyntaxTree {
+  rankdir=TB;
+  node [shape=circle, fontname=Helvetica];
+  n0 [label="·"];
+  n1 [label="|"];
+  n2 [label="*"];
+  n3 [label="a"];
+  n2 -> n3;
+  n1 -> n2;
+  n4 [label="*"];
+  n5 [label="b"];
+  n4 -> n5;
+  n1 -> n4;
+  n0 -> n1;
+  n6 [label="*"];
+  n7 [label="|"];
+  n8 [label="*"];
+  n9 [label="a"];
+  n8 -> n9;
+  n7 -> n8;
+  n10 [label="*"];
+  n11 [label="b"];
+  n10 -> n11;
+  n7 -> n10;
+  n6 -> n7;
+  n0 -> n6;
+}
