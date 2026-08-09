@@ -10,7 +10,7 @@ public class Main {
         }
 
         ShuntingYard converter = new ShuntingYard();
-        File file = new File(args.length > 0 ? args[0] : "regex.txt");
+        File file = new File(args.length > 0 ? args[0] : "input.txt");
 
         try {
             converter.tokenize(file);

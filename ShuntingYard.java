@@ -6,16 +6,15 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
+import java.util.Stack;
 
 public class ShuntingYard {
-    private static final String CONCATENATION = "·";
-    private static final String BINARY_OPERATORS = "|·^";
-    private static final String POSTFIX_OPERATORS = "?*+";
-
     private ArrayList<ArrayList<String>> tokens;
+    private ArrayList<ArrayList<String>> postfixExpressions;
 
     public ShuntingYard() {
         tokens = new ArrayList<>();
+        postfixExpressions = new ArrayList<>();
     }
 
     public void tokenize(File file) throws IOException {
@@ -29,13 +28,64 @@ public class ShuntingYard {
                         lineTokens.add(String.valueOf(symbol));
                     }
                 }
-                tokens.add(lineTokens);
+                if (!lineTokens.isEmpty()) {
+                    tokens.add(lineTokens);
+                }
             }
         }
     }
 
+    public void processAllTokens(boolean trace) {
+        postfixExpressions.clear();
+        for (ArrayList<String> regex : tokens) {
+            if (isBalanced(regex)) {
+                try {
+                    ArrayList<String> postfix = infixToPostfix(regex, trace);
+                    postfixExpressions.add(postfix);
+                } catch (IllegalArgumentException e) {
+                    System.err.println("Error processing expression: " + e.getMessage());
+                }
+            } else {
+                System.err.println("Skipped unbalanced expression: " + String.join("", regex));
+            }
+        }
+    }
+
+    public boolean isBalanced(ArrayList<String> lineTokens) {
+        Stack<Character> stack = new Stack<>();
+        String openings = "([{", closings = ")]}";
+
+        for (String token : lineTokens) {
+            char symbol = token.charAt(0);
+            int openingIndex = openings.indexOf(symbol);
+            int closingIndex = closings.indexOf(symbol);
+
+            if (openingIndex >= 0) {
+                stack.push(symbol);
+                System.out.printf("  %-3s -> push       %s%n", symbol, stack);
+            } else if (closingIndex >= 0) {
+                if (stack.isEmpty() || stack.peek() != openings.charAt(closingIndex)) {
+                    System.out.printf("  %-3s -> mismatch  %s%n", symbol, stack);
+                    return false;
+                }
+                stack.pop();
+                System.out.printf("  %-3s -> pop    %s%n", symbol, stack);
+            }
+        }
+
+        if (!stack.isEmpty()) {
+            System.out.println("  end -> stack is not empty: " + stack);
+            return false;
+        }
+        return true;
+    }
+
     public ArrayList<ArrayList<String>> getTokens() {
         return tokens;
+    }
+
+    public ArrayList<ArrayList<String>> getPostfixExpressions() {
+        return postfixExpressions;
     }
 
     public int getPrecedence(String token) {
@@ -45,10 +95,10 @@ public class ShuntingYard {
         if (token.equals("|")) {
             return 2;
         }
-        if (token.equals(CONCATENATION)) {
+        if (token.equals("·")) {
             return 3;
         }
-        if (POSTFIX_OPERATORS.contains(token)) {
+        if (token.equals("*") || token.equals("+") || token.equals("?")) {
             return 4;
         }
         if (token.equals("^")) {
@@ -67,7 +117,7 @@ public class ShuntingYard {
             if (i + 1 < grouped.size()
                     && canEndOperand(current)
                     && canStartOperand(grouped.get(i + 1))) {
-                formatted.add(CONCATENATION);
+                formatted.add("·");
             }
         }
         return formatted;
@@ -84,12 +134,12 @@ public class ShuntingYard {
         boolean expectingOperand = true;
 
         if (formattedRegEx.isEmpty()) {
-            throw new IllegalArgumentException("expresión vacía");
+            throw new IllegalArgumentException("Empty expression");
         }
         if (trace) {
             System.out.println("Tokens: " + String.join(" ", formattedRegEx));
             System.out.printf("%-10s %-22s %-35s %s%n",
-                    "Token", "Acción", "Salida", "Pila");
+                    "Token", "Action", "Output", "Stack");
         }
 
         for (String token : formattedRegEx) {
@@ -97,14 +147,14 @@ public class ShuntingYard {
             if (isOperand(token)) {
                 postfix.add(token);
                 expectingOperand = false;
-                action = "enviar a salida";
+                action = "Send to output";
             } else if (token.equals("(")) {
                 stack.addLast(token);
                 expectingOperand = true;
-                action = "apilar";
+                action = "Push to stack";
             } else if (token.equals(")")) {
                 if (expectingOperand) {
-                    throw new IllegalArgumentException("paréntesis vacío o cierre inesperado");
+                    throw new IllegalArgumentException("Empty parentheses or unexpected closing parenthesis");
                 }
                 int moved = 0;
                 while (!stack.isEmpty() && !stack.peekLast().equals("(")) {
@@ -112,15 +162,15 @@ public class ShuntingYard {
                     moved++;
                 }
                 if (stack.isEmpty()) {
-                    throw new IllegalArgumentException("paréntesis de cierre sin apertura");
+                    throw new IllegalArgumentException("Closing parenthesis without opening parenthesis");
                 }
                 stack.removeLast();
                 expectingOperand = false;
-                action = "cerrar grupo (" + moved + " movidos)";
+                action = "Close group (" + moved + " moved)";
             } else {
                 if (expectingOperand) {
                     throw new IllegalArgumentException(
-                            "operador " + token + " sin expresión previa");
+                            "Operator " + token + " without preceding expression");
                 }
                 int moved = 0;
                 while (!stack.isEmpty()
@@ -131,7 +181,7 @@ public class ShuntingYard {
                 }
                 stack.addLast(token);
                 expectingOperand = isBinaryOperator(token);
-                action = moved == 0 ? "apilar" : "mover " + moved + " y apilar";
+                action = moved == 0 ? "Push to stack" : "Move " + moved + " and push";
             }
             if (trace) {
                 printStep(token, action, postfix, stack);
@@ -139,15 +189,15 @@ public class ShuntingYard {
         }
 
         if (expectingOperand) {
-            throw new IllegalArgumentException("la expresión termina con un operador");
+            throw new IllegalArgumentException("Expression ends with an operator");
         }
         while (!stack.isEmpty()) {
             if (stack.peekLast().equals("(")) {
-                throw new IllegalArgumentException("paréntesis de apertura sin cierre");
+                throw new IllegalArgumentException("Opening parenthesis without closing parenthesis");
             }
             postfix.add(stack.removeLast());
             if (trace) {
-                printStep("fin", "vaciar pila", postfix, stack);
+                printStep("End", "Empty stack", postfix, stack);
             }
         }
 
@@ -161,7 +211,7 @@ public class ShuntingYard {
             String token = regex.get(i);
             if (token.equals("\\")) {
                 if (++i == regex.size()) {
-                    throw new IllegalArgumentException("carácter de escape sin símbolo");
+                    throw new IllegalArgumentException("Escape character without symbol");
                 }
                 grouped.add("\\" + regex.get(i));
             } else if (token.equals("[")) {
@@ -172,7 +222,7 @@ public class ShuntingYard {
                     if (token.equals("\\")) {
                         if (++i == regex.size()) {
                             throw new IllegalArgumentException(
-                                    "carácter de escape incompleto dentro de []");
+                                    "Incomplete escape character inside []");
                         }
                         members.add("\\" + regex.get(i));
                     } else if (token.equals("]")) {
@@ -183,10 +233,10 @@ public class ShuntingYard {
                     }
                 }
                 if (!closed) {
-                    throw new IllegalArgumentException("clase de caracteres sin cerrar");
+                    throw new IllegalArgumentException("Unclosed character class");
                 }
                 if (members.isEmpty()) {
-                    throw new IllegalArgumentException("clase de caracteres vacía");
+                    throw new IllegalArgumentException("Empty character class");
                 }
                 grouped.add("(");
                 for (int member = 0; member < members.size(); member++) {
@@ -211,11 +261,11 @@ public class ShuntingYard {
     }
 
     private boolean isBinaryOperator(String token) {
-        return token.length() == 1 && BINARY_OPERATORS.contains(token);
+        return token.length() == 1 && (token.equals("|") || token.equals("·") || token.equals("^"));
     }
 
     private boolean isPostfixOperator(String token) {
-        return token.length() == 1 && POSTFIX_OPERATORS.contains(token);
+        return token.length() == 1 && (token.equals("*") || token.equals("+") || token.equals("?"));
     }
 
     private boolean canEndOperand(String token) {
@@ -240,9 +290,8 @@ public class ShuntingYard {
         String postfix = String.join("",
                 new ShuntingYard().infixToPostfix(expression, false));
         if (!postfix.equals("ae|+")) {
-            throw new AssertionError("se esperaba ae|+, se obtuvo " + postfix);
+            throw new AssertionError("Expected ae|+, got " + postfix);
         }
-        System.out.println("Prueba correcta: [ae]+ -> ae|+");
+        System.out.println("Test passed: [ae]+ -> ae|+");
     }
-
 }
